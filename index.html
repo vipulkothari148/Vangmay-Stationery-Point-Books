@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Vangmay Stationery Point - Barcode Inventory & POS</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Inter & JetBrains Mono for Barcodes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- HTML5-QRCode Barcode Scanner Library -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  
+  <!-- Tone.js for crisp POS scan & transaction audio feedback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom scrollbar hiding for horizontal category pills */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Smooth bottom sheet transitions */
+    .sheet-backdrop {
+      transition: opacity 0.25s ease;
+    }
+    .sheet-panel {
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .sheet-hidden .sheet-backdrop {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .sheet-hidden .sheet-panel {
+      transform: translateY(100%);
+    }
+
+    /* Scanner viewport styling */
+    #reader video {
+      object-fit: cover !important;
+      border-radius: 1rem !important;
+    }
+    #reader__scan_region {
+      background: transparent !important;
+    }
+    #reader__dashboard {
+      display: none !important;
+    }
+
+    /* Subtle pulse for live sync dot */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 0.8; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .live-dot::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px;
+      background-color: #10b981;
+      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 font-sans antialiased selection:bg-brand-600 selection:text-white pb-28">
+
+  <!-- ==================== TOP STICKY HEADER ==================== -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+      <!-- Brand & Live Sync Indicator -->
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-sm shadow-brand-600/30 shrink-0">
+          <!-- Stationery Barcode Icon -->
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 8v8m4-8v8m4-8v8m3-8v8" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="font-extrabold text-sm sm:text-lg tracking-tight text-slate-900 leading-tight truncate">Vangmay Stationery Point</h1>
+            <button onclick="openSetupModal()" id="sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition shrink-0 cursor-pointer">
+              <span class="relative w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>Local Mode (Tap to Connect Drive)</span>
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-0.5 font-medium truncate" id="device-label">Live Barcode Inventory & POS • Counter Phone 1</p>
+        </div>
+      </div>
+
+      <!-- Header Action: Drive Sync & Settings Button -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button onclick="exportCSVBackup()" title="Export CSV Backup" class="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 border border-emerald-200 text-xs font-bold transition" aria-label="Export CSV">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span class="hidden sm:inline">Export CSV</span>
+        </button>
+
+        <button onclick="manualSyncNow()" id="manual-sync-btn" title="Sync with Google Drive Now" class="hidden p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 border border-emerald-200 transition" aria-label="Sync Now">
+          <svg id="manual-sync-icon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+
+        <button onclick="openSetupModal()" title="Google Drive Sync & Settings" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold transition shadow-sm" aria-label="Drive Sync and Settings">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+          </svg>
+          <span>Sync</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs (Inventory vs Live Activity Log) -->
+    <div class="max-w-3xl mx-auto px-4 flex border-t border-slate-100">
+      <button id="tab-inventory" onclick="switchTab('inventory')" class="flex-1 py-2.5 text-xs sm:text-sm font-bold text-brand-600 border-b-2 border-brand-600 flex items-center justify-center gap-1.5 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+        Shop Stock (<span id="tab-sku-count">0</span>)
+      </button>
+      <button id="tab-activity" onclick="switchTab('activity')" class="flex-1 py-2.5 text-xs sm:text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 flex items-center justify-center gap-1.5 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Live Activity Log
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN CONTENT CONTAINER ==================== -->
+  <main class="max-w-3xl mx-auto px-4 pt-4">
+
+    <!-- VIEW 1: INVENTORY DASHBOARD -->
+    <div id="view-inventory">
+      
+      <!-- 4 KPI Summary Cards -->
+      <section class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total Items</p>
+          <p id="stat-skus" class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-0.5">0</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">Unique SKUs</p>
+        </div>
+
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces</p>
+          <p id="stat-units" class="text-xl sm:text-2xl font-extrabold text-brand-600 mt-0.5">0</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">Units in shop</p>
+        </div>
+
+        <div onclick="toggleLowStockFilter()" class="cursor-pointer bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-rose-300 transition active:scale-[0.98]">
+          <div class="flex items-center justify-between">
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Low Stock</p>
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+          </div>
+          <p id="stat-low" class="text-xl sm:text-2xl font-extrabold text-rose-600 mt-0.5">0</p>
+          <p class="text-[11px] text-rose-600/80 font-medium mt-0.5">Tap to filter</p>
+        </div>
+
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Stock Value</p>
+          <p id="stat-value" class="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-0.5">₹0</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">Retail total</p>
+        </div>
+      </section>
+
+      <!-- Search Bar + Add New Item Button -->
+      <section class="flex gap-2 mb-3">
+        <div class="relative flex-1">
+          <svg class="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input 
+            type="text" 
+            id="search-input" 
+            oninput="renderInventory()"
+            placeholder="Search item name or barcode..." 
+            class="w-full pl-10 pr-9 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent shadow-sm"
+          >
+          <button id="clear-search-btn" onclick="clearSearch()" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <button onclick="openNewItemModal('')" class="px-4 py-3 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-2xl text-sm font-bold flex items-center gap-1.5 shadow-sm shrink-0 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          <span class="hidden sm:inline">Add Item</span>
+          <span class="sm:hidden">New</span>
+        </button>
+      </section>
+
+      <!-- Category Filter Pills & Low Stock Toggle -->
+      <section class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 mb-2">
+        <button id="filter-low-btn" onclick="toggleLowStockFilter()" class="shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+          Low Stock Only
+        </button>
+
+        <div class="h-4 w-[1px] bg-slate-300 shrink-0"></div>
+
+        <div id="category-pills" class="flex items-center gap-1.5">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </section>
+
+      <!-- Inventory Item Cards List (Renders instantly on load) -->
+      <section id="inventory-list" class="space-y-2.5"></section>
+    </div>
+
+    <!-- VIEW 2: LIVE ACTIVITY / AUDIT LOG -->
+    <div id="view-activity" class="hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-bold text-slate-900 text-base">Live Shop Activity</h2>
+            <p class="text-xs text-slate-500">Sales & stock updates across all 3 phones</p>
+          </div>
+          <span id="activity-sync-tag" class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200">
+            Local Cache
+          </span>
+        </div>
+        <div id="activity-list" class="divide-y divide-slate-100 max-h-[68vh] overflow-y-auto">
+          <div class="p-8 text-center text-slate-400 text-sm">No activity recorded yet.</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== FLOATING BOTTOM SCAN BARCODE BUTTON ==================== -->
+  <div class="fixed bottom-0 inset-x-0 z-30 pointer-events-none pb-5 pt-6 bg-gradient-to-t from-slate-100 via-slate-100/90 to-transparent">
+    <div class="max-w-3xl mx-auto px-4 flex justify-center">
+      <button onclick="openScannerModal()" class="pointer-events-auto w-full sm:w-auto sm:min-w-[280px] py-4 px-7 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.97] text-white font-extrabold text-base sm:text-lg shadow-xl shadow-brand-600/35 flex items-center justify-center gap-3 transition">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 8v8m4-8v8m4-8v8m3-8v8" />
+        </svg>
+        SCAN BARCODE
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 1: CAMERA BARCODE SCANNER ==================== -->
+  <div id="scanner-modal" class="fixed inset-0 z-50 hidden bg-slate-950/95 flex flex-col">
+    <!-- Top Controls -->
+    <div class="px-4 py-3.5 flex items-center justify-between text-white border-b border-white/10">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <h3 class="font-bold text-base">Point Camera at Barcode</h3>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Torch / Flashlight Button -->
+        <button id="torch-btn" onclick="toggleTorch()" class="hidden px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition">
+          <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span id="torch-label">Flash</span>
+        </button>
+
+        <!-- Close Scanner -->
+        <button onclick="closeScannerModal()" class="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition" aria-label="Close Scanner">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Camera Preview Container -->
+    <div class="flex-1 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <div class="w-full max-w-md relative rounded-2xl overflow-hidden border-2 border-brand-500/70 shadow-2xl bg-black aspect-[4/3]">
+        <div id="reader" class="w-full h-full"></div>
+        <!-- Aiming Guide Overlay -->
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div class="w-4/5 h-28 border-2 border-emerald-400/90 rounded-xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
+            <div class="w-full h-0.5 bg-rose-500/90 absolute top-1/2 -translate-y-1/2 animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+
+      <p id="scanner-status" class="text-slate-300 text-xs font-medium mt-3 text-center">
+        Supports EAN-13, UPC, Code-128 & QR codes on notebooks, pens & boxes
+      </p>
+
+      <!-- Manual Barcode Fallback Input inside Scanner -->
+      <form onsubmit="handleManualBarcodeSubmit(event)" class="w-full max-w-md mt-4 flex gap-2">
+        <input 
+          type="text" 
+          id="manual-barcode-input" 
+          placeholder="Or type/paste barcode number..." 
+          class="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-slate-400 text-sm font-mono focus:outline-none focus:border-brand-400"
+        >
+        <button type="submit" class="px-4 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm shrink-0">
+          Go
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== BOTTOM SHEET 2: EXISTING ITEM POS / STOCK ACTION ==================== -->
+  <div id="pos-sheet" class="fixed inset-0 z-40 sheet-hidden">
+    <div onclick="closePosSheet()" class="sheet-backdrop fixed inset-0 bg-slate-900/60 backdrop-blur-xs"></div>
+    <div class="sheet-panel fixed bottom-0 inset-x-0 max-w-xl mx-auto bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 p-5 pb-7">
+      <!-- Drag Pill -->
+      <div class="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-4"></div>
+
+      <!-- Item Header -->
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span id="pos-category" class="px-2.5 py-0.5 rounded-md bg-brand-50 text-brand-700 text-xs font-bold">Notebooks</span>
+            <span id="pos-barcode" class="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">8901234567890</span>
+            <span id="pos-low-badge" class="hidden px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[11px] font-extrabold">LOW STOCK</span>
+          </div>
+          <h3 id="pos-name" class="text-xl font-extrabold text-slate-900 mt-1.5 leading-snug">Classmate Notebook</h3>
+          <p class="text-sm font-bold text-emerald-600 mt-0.5">Selling Price: <span id="pos-price">₹60</span></p>
+        </div>
+
+        <button onclick="openEditCurrentItem()" class="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold flex items-center gap-1 shrink-0" title="Edit Item Details">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+          Edit
+        </button>
+      </div>
+
+      <!-- Live Current Stock Box -->
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between mb-4">
+        <span class="text-sm font-semibold text-slate-600">Current Shop Stock:</span>
+        <div class="flex items-baseline gap-1.5">
+          <span id="pos-stock" class="text-3xl font-extrabold text-slate-900">24</span>
+          <span class="text-xs font-bold text-slate-500 uppercase">Units</span>
+        </div>
+      </div>
+
+      <!-- Quick Quantity Steppers -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+          <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Quantity</label>
+          <div class="flex gap-1.5">
+            <button type="button" onclick="setPosQty(1)" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">1</button>
+            <button type="button" onclick="setPosQty(2)" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">2</button>
+            <button type="button" onclick="setPosQty(5)" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">5</button>
+            <button type="button" onclick="setPosQty(10)" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">10</button>
+            <button type="button" onclick="setPosQty(12)" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">12 / Doz</button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="adjustPosQty(-1)" class="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 font-extrabold text-xl text-slate-700 flex items-center justify-center">-</button>
+          <input type="number" id="pos-qty-input" value="1" min="1" max="9999" class="flex-1 h-12 text-center text-xl font-extrabold bg-white border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand-600">
+          <button type="button" onclick="adjustPosQty(1)" class="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 font-extrabold text-xl text-slate-700 flex items-center justify-center">+</button>
+        </div>
+      </div>
+
+      <!-- Large POS Action Buttons: SELL (-) vs STOCK IN (+) -->
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="executeStockChange('OUT')" class="py-4 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-extrabold text-base shadow-lg shadow-rose-600/25 flex flex-col items-center justify-center transition">
+          <span>− SELL / STOCK OUT</span>
+          <span class="text-[11px] font-medium text-rose-100 mt-0.5">Customer Purchase</span>
+        </button>
+
+        <button onclick="executeStockChange('IN')" class="py-4 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold text-base shadow-lg shadow-emerald-600/25 flex flex-col items-center justify-center transition">
+          <span>+ ADD / STOCK IN</span>
+          <span class="text-[11px] font-medium text-emerald-100 mt-0.5">New Supplier Stock</span>
+        </button>
+      </div>
+
+      <!-- Scan Next Shortcut -->
+      <button onclick="closePosSheet(); openScannerModal();" class="w-full mt-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
+        </svg>
+        Scan Another Item
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 3: ADD / EDIT STATIONERY ITEM ==================== -->
+  <div id="item-form-modal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <span id="form-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700">New Stationery Item</span>
+          <h3 id="form-title" class="text-lg font-extrabold text-slate-900 mt-1">Add Item to Shop</h3>
+        </div>
+        <button onclick="closeItemFormModal()" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <form id="stationery-form" onsubmit="saveStationeryItem(event)" class="space-y-3.5">
+        <input type="hidden" id="edit-item-id">
+
+        <!-- Barcode Field -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Barcode Number (Scanned or Auto-Gen)</label>
+          <div class="flex gap-2">
+            <input type="text" id="form-barcode" required placeholder="e.g. 8902519001234" class="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <button type="button" onclick="generateShopBarcode()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold shrink-0" title="Generate barcode for loose items without barcode">
+              Auto-Gen
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Tip: Use "Auto-Gen" for loose pencils, erasers, or chart papers without a barcode.</p>
+        </div>
+
+        <!-- Item Name -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Stationery Item Name *</label>
+          <input type="text" id="form-name" required placeholder="e.g. Classmate Notebook 172pg" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        </div>
+
+        <!-- Category & Price -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Category</label>
+            <select id="form-category" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="Notebooks">Notebooks</option>
+              <option value="Pens & Pencils">Pens & Pencils</option>
+              <option value="Art & Craft">Art & Craft</option>
+              <option value="Office Supplies">Office Supplies</option>
+              <option value="Files & Folders">Files & Folders</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Selling Price (₹) *</label>
+            <input type="number" id="form-price" required min="0" step="0.5" placeholder="60" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+          </div>
+        </div>
+
+        <!-- Stock Quantity & Low Stock Alert -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Current Stock Qty *</label>
+            <input type="number" id="form-stock" required min="0" value="10" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Low Stock Alert At</label>
+            <input type="number" id="form-min-stock" required min="1" value="5" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+          </div>
+        </div>
+
+        <!-- Submit & Delete Buttons -->
+        <div class="pt-2 flex items-center gap-2.5">
+          <button type="button" id="delete-item-btn" onclick="deleteCurrentItem()" class="hidden px-4 py-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-sm transition">
+            Delete
+          </button>
+          <button type="submit" class="flex-1 py-3.5 px-5 rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-brand-600/25 transition">
+            Save Item to Stock
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 4: GOOGLE DRIVE 3-PHONE SYNC & SETTINGS ==================== -->
+  <div id="setup-modal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Google Drive Data Center</span>
+          <h3 class="text-lg font-extrabold text-slate-900 mt-1">3-Phone Live Sync & Settings</h3>
+        </div>
+        <button onclick="closeSetupModal()" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-sm text-slate-600">
+        
+        <!-- 1. Google Apps Script Web App URL Connector -->
+        <div class="p-4 rounded-2xl bg-brand-50/70 border border-brand-200">
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-xs font-extrabold uppercase tracking-wider text-brand-900">Google Apps Script Web App URL</label>
+            <span id="modal-sync-status" class="text-[11px] font-bold text-amber-700">Not Connected</span>
+          </div>
+          <p class="text-xs text-brand-900/80 mb-2.5 leading-relaxed">
+            Paste your Google Sheet Web App URL below. Once saved, all 3 phones sync automatically every 4 seconds with your Google Drive!
+          </p>
+          <input 
+            type="url" 
+            id="gas-url-input" 
+            placeholder="https://script.google.com/macros/s/AKfycb.../exec" 
+            class="w-full px-3.5 py-2.5 bg-white border border-brand-300 rounded-xl font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-600 mb-2"
+          >
+          <input 
+            type="password" 
+            id="shop-pin-input" 
+            placeholder="Secret Shop PIN (must match SHOP_PIN in Apps Script)" 
+            class="w-full px-3.5 py-2.5 bg-white border border-brand-300 rounded-xl font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-600 mb-2.5"
+          >
+          <div class="flex gap-2">
+            <button type="button" onclick="saveAndSyncGasUrl()" id="save-sync-btn" class="flex-1 py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-extrabold text-xs shadow-sm transition">
+              Save & Sync Now
+            </button>
+            <button type="button" onclick="manualSyncNow()" class="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs shadow-sm transition">
+              Test / Force Sync
+            </button>
+            <button type="button" id="disconnect-gas-btn" onclick="disconnectGasUrl()" class="hidden px-3 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs transition">
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Device Name Selector (For 3 Phones) -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">This Phone's Name (Shown in Activity Log)</label>
+          <div class="flex gap-2 mb-2">
+            <button type="button" onclick="quickSetDevice('Counter Phone 1')" class="flex-1 py-1.5 px-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-700">Counter Phone 1</button>
+            <button type="button" onclick="quickSetDevice('Counter Phone 2')" class="flex-1 py-1.5 px-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-700">Counter Phone 2</button>
+            <button type="button" onclick="quickSetDevice('Owner Phone')" class="flex-1 py-1.5 px-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-700">Owner Phone</button>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="device-name-input" placeholder="e.g. Counter Phone 1" class="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900">
+            <button type="button" onclick="saveDeviceName()" class="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold">Save</button>
+          </div>
+        </div>
+
+        <!-- 3. One-Click Copy Apps Script Code -->
+        <div class="p-3.5 rounded-2xl bg-slate-900 text-slate-200">
+          <div class="flex items-center justify-between mb-1.5">
+            <h4 class="font-bold text-white text-xs flex items-center gap-1.5">
+              <span>📋</span> Google Sheet Apps Script (2-Min Setup)
+            </h4>
+            <button type="button" onclick="copyAppsScriptCode()" id="copy-script-btn" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs transition">
+              Copy Apps Script Code
+            </button>
+          </div>
+          <ol class="list-decimal list-inside space-y-1 text-[11px] text-slate-300 leading-relaxed">
+            <li>Open <strong class="text-white">sheets.new</strong> in your browser (logged into your Google Drive).</li>
+            <li>Go to <strong class="text-white">Extensions → Apps Script</strong>, delete any existing code, paste the copied code, set <strong class="text-amber-300">SHOP_PIN</strong> at line 4, and click <strong class="text-white">Save</strong>.</li>
+            <li>Click <strong class="text-white">Deploy → New deployment → Web app</strong>, set <em>Who has access</em> to <strong class="text-emerald-300">Anyone</strong>, and paste the Web App URL + PIN above on all 3 phones!</li>
+          </ol>
+        </div>
+
+        <!-- 4. Export CSV & Clear All Shop Data -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button type="button" onclick="exportCSVBackup()" class="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export CSV Backup
+          </button>
+
+          <button type="button" id="clear-data-step1" onclick="promptClearAllData()" class="py-3 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs transition">
+            Reset / Clear All Shop Data
+          </button>
+        </div>
+
+        <div id="clear-data-step2" class="hidden p-3.5 rounded-2xl bg-rose-50 border border-rose-300 space-y-2">
+          <p class="text-xs font-extrabold text-rose-800">Are you sure? This will delete all items & logs on this device (and Google Sheet if connected).</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="cancelClearAllData()" class="py-2 rounded-xl bg-white border border-slate-300 text-slate-700 font-bold text-xs">
+              Cancel
+            </button>
+            <button type="button" id="confirm-clear-btn" onclick="executeClearAllData()" class="py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-sm">
+              Yes, Delete Everything
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOAST NOTIFICATION ==================== -->
+  <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-all duration-200 transform -translate-y-2">
+    <div id="toast-inner" class="px-4 py-2.5 rounded-2xl bg-slate-900 text-white text-xs sm:text-sm font-bold shadow-xl flex items-center gap-2 whitespace-nowrap">
+      <span id="toast-icon">✅</span>
+      <span id="toast-msg">Stock updated!</span>
+    </div>
+  </div>
+
+  <!-- ==================== LOCAL-FIRST + GOOGLE SHEETS LIVE SYNC LOGIC ==================== -->
+  <script>
+    // --- 1. STORAGE KEYS & APPLICATION STATE ---
+    const STORAGE_KEYS = {
+      ITEMS: 'vangmay_pos_items_v1',
+      LOGS: 'vangmay_pos_logs_v1',
+      GAS_URL: 'vangmay_pos_gas_url_v1',
+      SHOP_PIN: 'vangmay_pos_pin_v1',
+      DEVICE: 'vangmay_pos_device_v1'
+    };
+
+    const CATEGORIES = ['All', 'Notebooks', 'Pens & Pencils', 'Art & Craft', 'Office Supplies', 'Files & Folders', 'Other'];
+
+    let inventoryItems = [];
+    let activityLogs = [];
+    let gasWebAppUrl = '';
+    let shopPin = '';
+    let deviceLabel = 'Counter Phone 1';
+
+    let selectedCategory = 'All';
+    let filterLowStockOnly = false;
+    let activePosItemId = null;
+    let syncTimer = null;
+    let isSyncing = false;
+    let lastLocalWriteTime = 0;
+
+    // Scanner State
+    let html5QrCode = null;
+    let isScanning = false;
+    let torchEnabled = false;
+    let lastScannedCode = '';
+    let lastScanTime = 0;
+
+    // --- 2. EXACT GOOGLE APPS SCRIPT CODE FOR 1-CLICK COPY ---
+    const GOOGLE_APPS_SCRIPT_CODE = [
+      "// Vangmay Stationery Point - Google Sheet Live Inventory Backend (PIN + Delta Math)",
+      "// 1. Open sheets.new -> Extensions -> Apps Script -> Paste this code",
+      "// 2. Change '1234' below to your own Secret Shop PIN, then click Save",
+      "var SHOP_PIN = '1234';",
+      "",
+      "// 3. Deploy -> New deployment -> Web app -> Execute as: Me -> Who has access: Anyone",
+      "",
+      "function doGet(e) {",
+      "  return handleRequest(e);",
+      "}",
+      "",
+      "function doPost(e) {",
+      "  return handleRequest(e);",
+      "}",
+      "",
+      "function handleRequest(e) {",
+      "  var lock = LockService.getScriptLock();",
+      "  lock.tryLock(10000);",
+      "  try {",
+      "    var payload = {};",
+      "    if (e && e.postData && e.postData.contents) {",
+      "      payload = JSON.parse(e.postData.contents);",
+      "    }",
+      "    var incomingPin = String(payload.pin || (e && e.parameter && e.parameter.pin) || '').trim();",
+      "    if (SHOP_PIN && incomingPin !== String(SHOP_PIN).trim()) {",
+      "      return ContentService",
+      "        .createTextOutput(JSON.stringify({ ok: false, error: 'Invalid Shop PIN' }))",
+      "        .setMimeType(ContentService.MimeType.JSON);",
+      "    }",
+      "",
+      "    var ss = SpreadsheetApp.getActiveSpreadsheet();",
+      "    var stockSheet = ss.getSheetByName('Stock') || ss.insertSheet('Stock');",
+      "    var logSheet = ss.getSheetByName('Logs') || ss.insertSheet('Logs');",
+      "",
+      "    if (stockSheet.getLastRow() === 0) {",
+      "      stockSheet.appendRow(['id', 'barcode', 'name', 'category', 'price', 'stock', 'minStock', 'updatedAt']);",
+      "      stockSheet.getRange('A1:H1').setFontWeight('bold').setBackground('#eef2ff');",
+      "    }",
+      "    if (logSheet.getLastRow() === 0) {",
+      "      logSheet.appendRow(['id', 'type', 'itemName', 'barcode', 'qty', 'newStock', 'device', 'timestamp']);",
+      "      logSheet.getRange('A1:H1').setFontWeight('bold').setBackground('#ecfdf5');",
+      "    }",
+      "",
+      "    var action = payload.action || (e && e.parameter && e.parameter.action) || 'sync';",
+      "",
+      "    if (action === 'upsertItem' && payload.item) {",
+      "      upsertRow(stockSheet, payload.item);",
+      "    } else if (action === 'deleteItem' && payload.id) {",
+      "      deleteRowById(stockSheet, payload.id);",
+      "    } else if (action === 'stockChange' && payload.item) {",
+      "      var delta = Number(payload.delta) || 0;",
+      "      var exactNewStock = applyDeltaStock(stockSheet, payload.item, delta);",
+      "      if (payload.log) {",
+      "        logSheet.appendRow([",
+      "          payload.log.id, payload.log.type, payload.log.itemName,",
+      "          \"'\" + payload.log.barcode, payload.log.qty, exactNewStock,",
+      "          payload.log.device, payload.log.timestamp",
+      "        ]);",
+      "      }",
+      "    } else if (action === 'pushFullState') {",
+      "      if (Array.isArray(payload.items)) {",
+      "        stockSheet.clearContents();",
+      "        stockSheet.appendRow(['id', 'barcode', 'name', 'category', 'price', 'stock', 'minStock', 'updatedAt']);",
+      "        payload.items.forEach(function(it) {",
+      "          stockSheet.appendRow([it.id, \"'\" + it.barcode, it.name, it.category, it.price, it.stock, it.minStock, it.updatedAt]);",
+      "        });",
+      "      }",
+      "    } else if (action === 'clearAll') {",
+      "      stockSheet.clearContents();",
+      "      stockSheet.appendRow(['id', 'barcode', 'name', 'category', 'price', 'stock', 'minStock', 'updatedAt']);",
+      "      logSheet.clearContents();",
+      "      logSheet.appendRow(['id', 'type', 'itemName', 'barcode', 'qty', 'newStock', 'device', 'timestamp']);",
+      "    }",
+      "",
+      "    var items = readStock(stockSheet);",
+      "    var logs = readLogs(logSheet);",
+      "",
+      "    return ContentService",
+      "      .createTextOutput(JSON.stringify({ ok: true, items: items, logs: logs }))",
+      "      .setMimeType(ContentService.MimeType.JSON);",
+      "  } catch (err) {",
+      "    return ContentService",
+      "      .createTextOutput(JSON.stringify({ ok: false, error: err.toString() }))",
+      "      .setMimeType(ContentService.MimeType.JSON);",
+      "  } finally {",
+      "    lock.releaseLock();",
+      "  }",
+      "}",
+      "",
+      "function applyDeltaStock(sheet, item, delta) {",
+      "  var data = sheet.getDataRange().getValues();",
+      "  for (var i = 1; i < data.length; i++) {",
+      "    if (String(data[i][0]) === String(item.id) || String(data[i][1]).replace(/^'/, '') === String(item.barcode)) {",
+      "      var currentSheetStock = Number(data[i][5]) || 0;",
+      "      var nextStock = Math.max(0, currentSheetStock + delta);",
+      "      sheet.getRange(i + 1, 6).setValue(nextStock);",
+      "      sheet.getRange(i + 1, 8).setValue(Date.now());",
+      "      return nextStock;",
+      "    }",
+      "  }",
+      "  var initialStock = Math.max(0, Number(item.stock) || 0);",
+      "  sheet.appendRow([",
+      "    item.id, \"'\" + item.barcode, item.name, item.category,",
+      "    Number(item.price) || 0, initialStock, Number(item.minStock) || 5, Date.now()",
+      "  ]);",
+      "  return initialStock;",
+      "}",
+      "",
+      "function upsertRow(sheet, item) {",
+      "  var data = sheet.getDataRange().getValues();",
+      "  for (var i = 1; i < data.length; i++) {",
+      "    if (String(data[i][0]) === String(item.id) || String(data[i][1]).replace(/^'/, '') === String(item.barcode)) {",
+      "      var existingUpdatedAt = Number(data[i][7]) || 0;",
+      "      var incomingUpdatedAt = Number(item.updatedAt) || Date.now();",
+      "      if (incomingUpdatedAt >= existingUpdatedAt) {",
+      "        sheet.getRange(i + 1, 1, 1, 8).setValues([[",
+      "          item.id, \"'\" + item.barcode, item.name, item.category,",
+      "          Number(item.price) || 0, Number(item.stock) || 0, Number(item.minStock) || 5, incomingUpdatedAt",
+      "        ]]);",
+      "      }",
+      "      return;",
+      "    }",
+      "  }",
+      "  sheet.appendRow([",
+      "    item.id, \"'\" + item.barcode, item.name, item.category,",
+      "    Number(item.price) || 0, Number(item.stock) || 0, Number(item.minStock) || 5, Number(item.updatedAt) || Date.now()",
+      "  ]);",
+      "}",
+      "",
+      "function deleteRowById(sheet, id) {",
+      "  var data = sheet.getDataRange().getValues();",
+      "  for (var i = data.length - 1; i >= 1; i--) {",
+      "    if (String(data[i][0]) === String(id)) {",
+      "      sheet.deleteRow(i + 1);",
+      "      return;",
+      "    }",
+      "  }",
+      "}",
+      "",
+      "function readStock(sheet) {",
+      "  var data = sheet.getDataRange().getValues();",
+      "  var list = [];",
+      "  for (var i = 1; i < data.length; i++) {",
+      "    if (!data[i][0] && !data[i][2]) continue;",
+      "    list.push({",
+      "      id: String(data[i][0]),",
+      "      barcode: String(data[i][1]).replace(/^'/, ''),",
+      "      name: String(data[i][2]),",
+      "      category: String(data[i][3] || 'Other'),",
+      "      price: Number(data[i][4]) || 0,",
+      "      stock: Number(data[i][5]) || 0,",
+      "      minStock: Number(data[i][6]) || 5,",
+      "      updatedAt: Number(data[i][7]) || Date.now()",
+      "    });",
+      "  }",
+      "  return list;",
+      "}",
+      "",
+      "function readLogs(sheet) {",
+      "  var data = sheet.getDataRange().getValues();",
+      "  var list = [];",
+      "  var start = Math.max(1, data.length - 60);",
+      "  for (var i = data.length - 1; i >= start; i--) {",
+      "    if (!data[i][0]) continue;",
+      "    list.push({",
+      "      id: String(data[i][0]),",
+      "      type: String(data[i][1]),",
+      "      itemName: String(data[i][2]),",
+      "      barcode: String(data[i][3]).replace(/^'/, ''),",
+      "      qty: Number(data[i][4]) || 1,",
+      "      newStock: Number(data[i][5]) || 0,",
+      "      device: String(data[i][6] || 'Counter Phone'),",
+      "      timestamp: Number(data[i][7]) || Date.now()",
+      "    });",
+      "  }",
+      "  return list;",
+      "}"
+    ].join("\n");
+
+    // --- 3. INSTANT 0ms STARTUP ---
+    function initApp() {
+      loadFromLocalStorage();
+      renderCategoryPills();
+      renderAll();
+
+      if (gasWebAppUrl) {
+        startLiveDriveSync();
+      } else {
+        updateSyncStatusUI('local');
+      }
+    }
+
+    function loadFromLocalStorage() {
+      try {
+        const rawItems = localStorage.getItem(STORAGE_KEYS.ITEMS);
+        const rawLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
+        inventoryItems = rawItems ? JSON.parse(rawItems) : [];
+        activityLogs = rawLogs ? JSON.parse(rawLogs) : [];
+        gasWebAppUrl = localStorage.getItem(STORAGE_KEYS.GAS_URL) || '';
+        shopPin = localStorage.getItem(STORAGE_KEYS.SHOP_PIN) || '';
+        deviceLabel = localStorage.getItem(STORAGE_KEYS.DEVICE) || 'Counter Phone 1';
+      } catch (e) {
+        console.warn('Local storage read fallback:', e);
+        inventoryItems = [];
+        activityLogs = [];
+      }
+
+      document.getElementById('device-label').textContent = `Live Barcode Inventory & POS • ${deviceLabel}`;
+      document.getElementById('device-name-input').value = deviceLabel;
+      document.getElementById('gas-url-input').value = gasWebAppUrl;
+      document.getElementById('shop-pin-input').value = shopPin;
+    }
+
+    function saveToLocalStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(inventoryItems));
+        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(activityLogs.slice(0, 80)));
+      } catch (e) {
+        console.warn('Local storage write warning:', e);
+      }
+    }
+
+    // --- 4. GOOGLE SHEETS / GOOGLE DRIVE LIVE SYNC ENGINE ---
+    function updateSyncStatusUI(mode, customText) {
+      const badge = document.getElementById('sync-badge');
+      const modalStatus = document.getElementById('modal-sync-status');
+      const manualSyncBtn = document.getElementById('manual-sync-btn');
+      const disconnectBtn = document.getElementById('disconnect-gas-btn');
+      const activityTag = document.getElementById('activity-sync-tag');
+
+      if (mode === 'connected') {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition shrink-0 cursor-pointer';
+        badge.innerHTML = `<span class="relative w-2 h-2 rounded-full bg-emerald-500 live-dot"></span><span>${customText || 'Live Drive Sync • Connected'}</span>`;
+        if (modalStatus) {
+          modalStatus.textContent = 'Connected & Live (4s Sync)';
+          modalStatus.className = 'text-[11px] font-bold text-emerald-600';
+        }
+        if (manualSyncBtn) manualSyncBtn.classList.remove('hidden');
+        if (disconnectBtn) disconnectBtn.classList.remove('hidden');
+        if (activityTag) {
+          activityTag.textContent = 'Live Drive Sync • Connected';
+          activityTag.className = 'px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200';
+        }
+      } else if (mode === 'warning') {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition shrink-0 cursor-pointer';
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span><span>${customText || 'Sync Retrying (Saved Locally)'}</span>`;
+        if (modalStatus) {
+          modalStatus.textContent = 'Retrying connection...';
+          modalStatus.className = 'text-[11px] font-bold text-rose-600';
+        }
+        if (manualSyncBtn) manualSyncBtn.classList.remove('hidden');
+        if (disconnectBtn) disconnectBtn.classList.remove('hidden');
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition shrink-0 cursor-pointer';
+        badge.innerHTML = `<span class="relative w-2 h-2 rounded-full bg-amber-500"></span><span>Local Mode (Tap to Connect Drive)</span>`;
+        if (modalStatus) {
+          modalStatus.textContent = 'Not Connected';
+          modalStatus.className = 'text-[11px] font-bold text-amber-700';
+        }
+        if (manualSyncBtn) manualSyncBtn.classList.add('hidden');
+        if (disconnectBtn) disconnectBtn.classList.add('hidden');
+        if (activityTag) {
+          activityTag.textContent = 'Local Cache';
+          activityTag.className = 'px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200';
+        }
+      }
+    }
+
+    function startLiveDriveSync() {
+      if (syncTimer) clearInterval(syncTimer);
+      if (!gasWebAppUrl) {
+        updateSyncStatusUI('local');
+        return;
+      }
+
+      updateSyncStatusUI('connected', 'Live Drive Sync • Connected');
+      // Silent background pull right away, then every 4 seconds
+      syncWithGoogleSheet({ action: 'sync' }, true);
+      syncTimer = setInterval(() => {
+        if (Date.now() - lastLocalWriteTime < 1500) return;
+        syncWithGoogleSheet({ action: 'sync' }, true);
+      }, 4000);
+    }
+
+    async function syncWithGoogleSheet(payload, silent = false) {
+      if (!gasWebAppUrl) return false;
+      if (isSyncing && payload.action === 'sync') return false;
+
+      isSyncing = true;
+      const syncIcon = document.getElementById('manual-sync-icon');
+      if (syncIcon && !silent) syncIcon.classList.add('animate-spin');
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const requestBody = Object.assign({}, payload, { pin: shopPin });
+        const response = await fetch(gasWebAppUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+        if (data && data.ok) {
+          if (Array.isArray(data.items)) {
+            if (data.items.length === 0 && inventoryItems.length > 0 && payload.action === 'sync') {
+              await syncWithGoogleSheet({ action: 'pushFullState', items: inventoryItems }, true);
+            } else {
+              inventoryItems = data.items;
+            }
+          }
+          if (Array.isArray(data.logs)) {
+            activityLogs = data.logs;
+          }
+          saveToLocalStorage();
+          renderAll();
+          updateSyncStatusUI('connected', 'Live Drive Sync • Connected');
+          return true;
+        } else {
+          if (data && data.error === 'Invalid Shop PIN') {
+            updateSyncStatusUI('warning', 'Wrong Shop PIN');
+            if (!silent) showToast('Wrong Shop PIN! Check your PIN in Sync settings.', '🔒');
+            return false;
+          }
+          throw new Error((data && data.error) || 'Invalid response from Google Sheet');
+        }
+      } catch (err) {
+        console.warn('Google Sheet sync warning:', err);
+        updateSyncStatusUI('warning', 'Sync Retrying (Saved Locally)');
+        if (!silent) {
+          showToast('Saved locally. Could not reach Google Sheet URL—check permissions.', '⚠️');
+        }
+        return false;
+      } finally {
+        isSyncing = false;
+        if (syncIcon) syncIcon.classList.remove('animate-spin');
+      }
+    }
+
+    window.saveAndSyncGasUrl = async function() {
+      const input = document.getElementById('gas-url-input');
+      const pinInput = document.getElementById('shop-pin-input');
+      const url = (input.value || '').trim();
+      const pin = (pinInput.value || '').trim();
+      if (!url) {
+        showToast('Please paste your Google Apps Script Web App URL.', '⚠️');
+        return;
+      }
+      if (!url.startsWith('https://script.google.com/')) {
+        showToast('URL should start with https://script.google.com/...', '⚠️');
+        return;
+      }
+      if (!pin) {
+        showToast('Please enter your Secret Shop PIN (e.g. 1234).', '🔒');
+        return;
+      }
+
+      const btn = document.getElementById('save-sync-btn');
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+
+      gasWebAppUrl = url;
+      shopPin = pin;
+      localStorage.setItem(STORAGE_KEYS.GAS_URL, gasWebAppUrl);
+      localStorage.setItem(STORAGE_KEYS.SHOP_PIN, shopPin);
+
+      const ok = await syncWithGoogleSheet({ action: 'sync' }, false);
+      btn.disabled = false;
+      btn.textContent = 'Save & Sync Now';
+
+      if (ok) {
+        startLiveDriveSync();
+        showToast('Connected! All 3 phones now sync live with Google Drive.', '☁️');
+      }
+    };
+
+    window.disconnectGasUrl = function() {
+      if (syncTimer) clearInterval(syncTimer);
+      gasWebAppUrl = '';
+      shopPin = '';
+      localStorage.removeItem(STORAGE_KEYS.GAS_URL);
+      localStorage.removeItem(STORAGE_KEYS.SHOP_PIN);
+      document.getElementById('gas-url-input').value = '';
+      document.getElementById('shop-pin-input').value = '';
+      updateSyncStatusUI('local');
+      showToast('Switched to Local Mode.', '📱');
+    };
+
+    window.manualSyncNow = async function() {
+      if (!gasWebAppUrl) {
+        openSetupModal();
+        return;
+      }
+      const ok = await syncWithGoogleSheet({ action: 'sync' }, false);
+      if (ok) showToast('Synced with Google Drive!', '✅');
+    };
+
+    window.copyAppsScriptCode = function() {
+      const textarea = document.createElement('textarea');
+      textarea.value = GOOGLE_APPS_SCRIPT_CODE;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        const btn = document.getElementById('copy-script-btn');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied! ✓';
+        showToast('Apps Script code copied! Paste into sheets.new', '📋');
+        setTimeout(() => { btn.textContent = orig; }, 2500);
+      } catch (err) {
+        showToast('Could not copy automatically.', '⚠️');
+      }
+      document.body.removeChild(textarea);
+    };
+
+    // --- 5. AUDIO FEEDBACK (TONE.JS) ---
+    function playBeep(type = 'scan') {
+      try {
+        if (typeof Tone === 'undefined') return;
+        if (Tone.context.state !== 'running') Tone.start();
+        const synth = new Tone.Synth({
+          oscillator: { type: 'sine' },
+          envelope: { attack: 0.005, decay: 0.08, sustain: 0, release: 0.05 }
+        }).toDestination();
+
+        if (type === 'scan') {
+          synth.triggerAttackRelease('B5', '32n');
+        } else if (type === 'sell') {
+          synth.triggerAttackRelease('G5', '32n');
+        } else if (type === 'add') {
+          synth.triggerAttackRelease('C6', '32n');
+        }
+      } catch (e) {
+        // Ignore audio errors on muted devices
+      }
+    }
+
+    // --- 6. RENDERING UI & KPI METRICS ---
+    function renderAll() {
+      updateKpis();
+      renderInventory();
+      renderActivityLog();
+    }
+
+    function updateKpis() {
+      const totalSkus = inventoryItems.length;
+      let totalUnits = 0;
+      let lowStockCount = 0;
+      let totalValue = 0;
+
+      inventoryItems.forEach(item => {
+        const qty = Number(item.stock) || 0;
+        const price = Number(item.price) || 0;
+        const minStock = Number(item.minStock) || 5;
+        totalUnits += qty;
+        totalValue += qty * price;
+        if (qty <= minStock) lowStockCount++;
+      });
+
+      document.getElementById('tab-sku-count').textContent = totalSkus;
+      document.getElementById('stat-skus').textContent = totalSkus;
+      document.getElementById('stat-units').textContent = totalUnits.toLocaleString('en-IN');
+      document.getElementById('stat-low').textContent = lowStockCount;
+      document.getElementById('stat-value').textContent = '₹' + totalValue.toLocaleString('en-IN');
+    }
+
+    function renderCategoryPills() {
+      const container = document.getElementById('category-pills');
+      container.innerHTML = CATEGORIES.map(cat => {
+        const active = selectedCategory === cat;
+        return `
+          <button 
+            onclick="selectCategory('${cat}')"
+            class="shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition ${
+              active 
+                ? 'bg-brand-600 text-white shadow-sm' 
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }"
+          >
+            ${cat}
+          </button>
+        `;
+      }).join('');
+    }
+
+    window.selectCategory = function(cat) {
+      selectedCategory = cat;
+      renderCategoryPills();
+      renderInventory();
+    };
+
+    window.toggleLowStockFilter = function() {
+      filterLowStockOnly = !filterLowStockOnly;
+      const btn = document.getElementById('filter-low-btn');
+      if (filterLowStockOnly) {
+        btn.className = 'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border border-rose-600 bg-rose-600 text-white flex items-center gap-1.5 shadow-sm transition';
+      } else {
+        btn.className = 'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition';
+      }
+      renderInventory();
+    };
+
+    window.clearSearch = function() {
+      document.getElementById('search-input').value = '';
+      renderInventory();
+    };
+
+    window.renderInventory = function() {
+      const query = (document.getElementById('search-input').value || '').trim().toLowerCase();
+      const clearBtn = document.getElementById('clear-search-btn');
+      clearBtn.classList.toggle('hidden', query.length === 0);
+
+      const filtered = inventoryItems
+        .filter(item => {
+          const matchesQuery = !query ||
+            (item.name && item.name.toLowerCase().includes(query)) ||
+            (item.barcode && item.barcode.toLowerCase().includes(query)) ||
+            (item.category && item.category.toLowerCase().includes(query));
+          const matchesCat = selectedCategory === 'All' || item.category === selectedCategory;
+          const matchesLow = !filterLowStockOnly || (Number(item.stock) <= (Number(item.minStock) || 5));
+          return matchesQuery && matchesCat && matchesLow;
+        })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      const listEl = document.getElementById('inventory-list');
+
+      if (filtered.length === 0) {
+        if (inventoryItems.length === 0) {
+          listEl.innerHTML = `
+            <div class="bg-white rounded-3xl border border-slate-200 p-7 text-center shadow-xs">
+              <div class="w-14 h-14 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-3">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 8v8m4-8v8m4-8v8m3-8v8" />
+                </svg>
+              </div>
+              <h3 class="text-base font-extrabold text-slate-900">Welcome to Vangmay Stationery Point!</h3>
+              <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                Your shop inventory is ready. Tap <strong class="text-brand-600">SCAN BARCODE</strong> below to scan your first item, or tap <strong class="text-slate-800">+ Add Item</strong> to enter stock manually.
+              </p>
+              <div class="mt-4 flex flex-wrap justify-center gap-2">
+                <button onclick="openNewItemModal('')" class="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm transition">
+                  + Add First Item
+                </button>
+                <button onclick="openSetupModal()" class="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs transition">
+                  Connect Google Drive (3 Phones)
+                </button>
+              </div>
+            </div>
+          `;
+        } else {
+          listEl.innerHTML = `
+            <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+              <p class="text-slate-700 font-bold text-base">No matching stationery items found</p>
+              <p class="text-slate-400 text-xs mt-1">Try clearing filters or scan a barcode to add a new item.</p>
+            </div>
+          `;
+        }
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(item => {
+        const stock = Number(item.stock) || 0;
+        const minStock = Number(item.minStock) || 5;
+        const isOut = stock === 0;
+        const isLow = stock > 0 && stock <= minStock;
+
+        let badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        let statusLabel = 'In Stock';
+        if (isOut) {
+          badgeClass = 'bg-rose-100 text-rose-800 border-rose-300';
+          statusLabel = 'Out of Stock';
+        } else if (isLow) {
+          badgeClass = 'bg-amber-50 text-amber-800 border-amber-300';
+          statusLabel = 'Low Stock';
+        }
+
+        return `
+          <div onclick="openPosSheet('${item.id}')" class="cursor-pointer bg-white hover:bg-slate-50/90 active:scale-[0.99] p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between gap-2.5 transition">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-bold">${escapeHtml(item.category || 'Stationery')}</span>
+                <span class="font-mono text-[11px] text-slate-400 truncate">${escapeHtml(item.barcode || 'NO-CODE')}</span>
+              </div>
+              <h3 class="font-bold text-slate-900 text-sm sm:text-base mt-1 truncate">${escapeHtml(item.name)}</h3>
+              <p class="text-xs font-extrabold text-brand-600 mt-0.5">₹${Number(item.price || 0).toLocaleString('en-IN')} <span class="text-slate-400 font-normal">/ unit</span></p>
+            </div>
+
+            <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <button type="button" onclick="quickAdjustItemStock(event, '${item.id}', 'OUT')" class="w-9 h-9 rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-90 text-rose-700 border border-rose-200 font-extrabold text-base flex items-center justify-center transition" title="Quick Sell -1">
+                −1
+              </button>
+
+              <div class="px-2 py-1 rounded-xl border ${badgeClass} text-center min-w-[58px]">
+                <span class="block text-base sm:text-lg font-extrabold leading-none">${stock}</span>
+                <span class="block text-[9px] font-bold uppercase tracking-wider mt-0.5">${statusLabel}</span>
+              </div>
+
+              <button type="button" onclick="quickAdjustItemStock(event, '${item.id}', 'IN')" class="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 active:scale-90 text-emerald-700 border border-emerald-200 font-extrabold text-base flex items-center justify-center transition" title="Quick Add +1">
+                +1
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    };
+
+    function renderActivityLog() {
+      const container = document.getElementById('activity-list');
+      if (activityLogs.length === 0) {
+        container.innerHTML = `<div class="p-8 text-center text-slate-400 text-sm">No stock movements yet. Scan a barcode to record sales or restocks!</div>`;
+        return;
+      }
+
+      container.innerHTML = activityLogs.map(log => {
+        const isOut = log.type === 'OUT';
+        const isAdd = log.type === 'IN';
+        const badgeColor = isOut
+          ? 'bg-rose-100 text-rose-700'
+          : isAdd
+            ? 'bg-emerald-100 text-emerald-700'
+            : 'bg-brand-100 text-brand-700';
+        const sign = isOut ? `−${log.qty}` : isAdd ? `+${log.qty}` : 'NEW';
+        const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now';
+
+        return `
+          <div class="p-3.5 sm:px-4 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-10 h-10 rounded-xl ${badgeColor} font-extrabold text-xs flex items-center justify-center shrink-0">
+                ${sign}
+              </div>
+              <div class="min-w-0">
+                <p class="font-bold text-slate-900 text-sm truncate">${escapeHtml(log.itemName)}</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">
+                  <span class="font-semibold text-slate-700">${escapeHtml(log.device || 'Counter Phone')}</span> • ${timeStr}
+                </p>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="text-xs font-bold text-slate-700">Stock: ${log.newStock}</span>
+              <span class="block font-mono text-[10px] text-slate-400">${escapeHtml(log.barcode || '')}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // --- 7. TAB NAVIGATION ---
+    window.switchTab = function(tab) {
+      const invView = document.getElementById('view-inventory');
+      const actView = document.getElementById('view-activity');
+      const invTab = document.getElementById('tab-inventory');
+      const actTab = document.getElementById('tab-activity');
+
+      if (tab === 'inventory') {
+        invView.classList.remove('hidden');
+        actView.classList.add('hidden');
+        invTab.className = 'flex-1 py-2.5 text-xs sm:text-sm font-bold text-brand-600 border-b-2 border-brand-600 flex items-center justify-center gap-1.5 transition';
+        actTab.className = 'flex-1 py-2.5 text-xs sm:text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 flex items-center justify-center gap-1.5 transition';
+      } else {
+        invView.classList.add('hidden');
+        actView.classList.remove('hidden');
+        actTab.className = 'flex-1 py-2.5 text-xs sm:text-sm font-bold text-brand-600 border-b-2 border-brand-600 flex items-center justify-center gap-1.5 transition';
+        invTab.className = 'flex-1 py-2.5 text-xs sm:text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 flex items-center justify-center gap-1.5 transition';
+      }
+    };
+
+    // --- 8. BARCODE SCANNER LOGIC ---
+    window.openScannerModal = async function() {
+      const modal = document.getElementById('scanner-modal');
+      modal.classList.remove('hidden');
+      document.getElementById('manual-barcode-input').value = '';
+      document.getElementById('scanner-status').textContent = 'Starting rear camera...';
+
+      try {
+        if (!html5QrCode) {
+          html5QrCode = new Html5Qrcode("reader");
+        }
+
+        const config = {
+          fps: 12,
+          qrbox: { width: 260, height: 120 },
+          aspectRatio: 1.333
+        };
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            onBarcodeDetected(decodedText);
+          },
+          () => {}
+        );
+
+        isScanning = true;
+        document.getElementById('scanner-status').textContent = 'Ready! Align barcode inside the green box';
+        checkTorchSupport();
+      } catch (err) {
+        console.warn('Camera start warning:', err);
+        document.getElementById('scanner-status').textContent = 'Camera blocked or unavailable. Enter barcode number below:';
+      }
+    };
+
+    window.closeScannerModal = async function() {
+      const modal = document.getElementById('scanner-modal');
+      modal.classList.add('hidden');
+      torchEnabled = false;
+      document.getElementById('torch-btn').classList.add('hidden');
+
+      if (html5QrCode && isScanning) {
+        try {
+          await html5QrCode.stop();
+        } catch (e) {}
+        isScanning = false;
+      }
+    };
+
+    function checkTorchSupport() {
+      try {
+        const track = html5QrCode.getRunningTrackCameraCapabilities();
+        if (track && track.torchFeature && track.torchFeature().isSupported()) {
+          document.getElementById('torch-btn').classList.remove('hidden');
+        }
+      } catch (e) {}
+    }
+
+    window.toggleTorch = async function() {
+      if (!html5QrCode || !isScanning) return;
+      try {
+        torchEnabled = !torchEnabled;
+        await html5QrCode.applyVideoConstraints({
+          advanced: [{ torch: torchEnabled }]
+        });
+        document.getElementById('torch-label').textContent = torchEnabled ? 'Flash ON' : 'Flash';
+      } catch (e) {
+        showToast('Flashlight not supported on this camera', '🔦');
+      }
+    };
+
+    window.handleManualBarcodeSubmit = function(e) {
+      e.preventDefault();
+      const val = document.getElementById('manual-barcode-input').value.trim();
+      if (!val) return;
+      onBarcodeDetected(val);
+    };
+
+    async function onBarcodeDetected(rawCode) {
+      const code = String(rawCode).trim();
+      const now = Date.now();
+      if (code === lastScannedCode && (now - lastScanTime) < 1800) return;
+      lastScannedCode = code;
+      lastScanTime = now;
+
+      playBeep('scan');
+      if (navigator.vibrate) navigator.vibrate(60);
+
+      await closeScannerModal();
+
+      const existingItem = inventoryItems.find(item => String(item.barcode).trim() === code);
+      if (existingItem) {
+        openPosSheet(existingItem.id);
+      } else {
+        showToast(`New barcode (${code})! Enter item details.`, '🆕');
+        openNewItemModal(code);
+      }
+    }
+
+    // --- 9. POS BOTTOM SHEET (QUICK SELL / RESTOCK) ---
+    window.openPosSheet = function(itemId) {
+      const item = inventoryItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      activePosItemId = itemId;
+      document.getElementById('pos-category').textContent = item.category || 'Stationery';
+      document.getElementById('pos-barcode').textContent = item.barcode || 'NO-CODE';
+      document.getElementById('pos-name').textContent = item.name;
+      document.getElementById('pos-price').textContent = '₹' + Number(item.price || 0).toLocaleString('en-IN');
+      document.getElementById('pos-stock').textContent = Number(item.stock) || 0;
+      document.getElementById('pos-qty-input').value = 1;
+
+      const isLow = (Number(item.stock) || 0) <= (Number(item.minStock) || 5);
+      document.getElementById('pos-low-badge').classList.toggle('hidden', !isLow);
+
+      document.getElementById('pos-sheet').classList.remove('sheet-hidden');
+    };
+
+    window.closePosSheet = function() {
+      document.getElementById('pos-sheet').classList.add('sheet-hidden');
+      activePosItemId = null;
+    };
+
+    window.setPosQty = function(val) {
+      document.getElementById('pos-qty-input').value = val;
+    };
+
+    window.adjustPosQty = function(delta) {
+      const input = document.getElementById('pos-qty-input');
+      const current = parseInt(input.value, 10) || 1;
+      input.value = Math.max(1, current + delta);
+    };
+
+    window.quickAdjustItemStock = function(event, itemId, direction) {
+      if (event) event.stopPropagation();
+      const itemIndex = inventoryItems.findIndex(i => i.id === itemId);
+      if (itemIndex === -1) return;
+
+      const item = inventoryItems[itemIndex];
+      const currentStock = Number(item.stock) || 0;
+      if (direction === 'OUT' && currentStock < 1) {
+        showToast(`"${item.name}" is out of stock!`, '⚠️');
+        return;
+      }
+
+      const delta = direction === 'OUT' ? -1 : 1;
+      const newStock = Math.max(0, currentStock + delta);
+      const updatedItem = { ...item, stock: newStock, updatedAt: Date.now() };
+      const logEntry = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        type: direction,
+        itemName: item.name,
+        barcode: item.barcode || '',
+        qty: 1,
+        newStock: newStock,
+        device: deviceLabel,
+        timestamp: Date.now()
+      };
+
+      inventoryItems[itemIndex] = updatedItem;
+      activityLogs.unshift(logEntry);
+      lastLocalWriteTime = Date.now();
+      saveToLocalStorage();
+      renderAll();
+      playBeep(direction === 'OUT' ? 'sell' : 'add');
+      showToast(direction === 'OUT' ? `Sold 1 × ${item.name} (Left: ${newStock})` : `Added +1 × ${item.name} (Total: ${newStock})`, direction === 'OUT' ? '🛒' : '📦');
+
+      if (gasWebAppUrl) {
+        syncWithGoogleSheet({ action: 'stockChange', item: updatedItem, delta: delta, log: logEntry }, true);
+      }
+    };
+
+    window.executeStockChange = function(direction) {
+      if (!activePosItemId) return;
+      const itemIndex = inventoryItems.findIndex(i => i.id === activePosItemId);
+      if (itemIndex === -1) return;
+
+      const item = inventoryItems[itemIndex];
+      const qty = Math.max(1, parseInt(document.getElementById('pos-qty-input').value, 10) || 1);
+      const currentStock = Number(item.stock) || 0;
+
+      if (direction === 'OUT' && currentStock < qty) {
+        showToast(`Only ${currentStock} units available in stock!`, '⚠️');
+        return;
+      }
+
+      const delta = direction === 'OUT' ? -qty : qty;
+      const newStock = Math.max(0, currentStock + delta);
+      const updatedItem = {
+        ...item,
+        stock: newStock,
+        updatedAt: Date.now()
+      };
+
+      const logEntry = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        type: direction,
+        itemName: item.name,
+        barcode: item.barcode || '',
+        qty: qty,
+        newStock: newStock,
+        device: deviceLabel,
+        timestamp: Date.now()
+      };
+
+      // 1. Update local state & UI immediately (0ms)
+      inventoryItems[itemIndex] = updatedItem;
+      activityLogs.unshift(logEntry);
+      lastLocalWriteTime = Date.now();
+      saveToLocalStorage();
+      renderAll();
+
+      playBeep(direction === 'OUT' ? 'sell' : 'add');
+      closePosSheet();
+
+      if (direction === 'OUT') {
+        showToast(`Sold ${qty} × ${item.name} (Left: ${newStock})`, '🛒');
+      } else {
+        showToast(`Added +${qty} × ${item.name} (Total: ${newStock})`, '📦');
+      }
+
+      // 2. Push atomic delta (+qty / -qty) to Google Sheet so simultaneous scans across 3 phones add up accurately
+      if (gasWebAppUrl) {
+        syncWithGoogleSheet({
+          action: 'stockChange',
+          item: updatedItem,
+          delta: delta,
+          log: logEntry
+        }, true);
+      }
+    };
+
+    window.openEditCurrentItem = function() {
+      if (!activePosItemId) return;
+      const item = inventoryItems.find(i => i.id === activePosItemId);
+      closePosSheet();
+      if (item) openEditItemModal(item);
+    };
+
+    // --- 10. ADD / EDIT / DELETE ITEM MODAL ---
+    window.openNewItemModal = function(prefillBarcode = '') {
+      document.getElementById('edit-item-id').value = '';
+      document.getElementById('form-badge').textContent = 'New Stationery Item';
+      document.getElementById('form-title').textContent = 'Add Item to Shop';
+      document.getElementById('form-barcode').value = prefillBarcode || '';
+      document.getElementById('form-name').value = '';
+      document.getElementById('form-category').value = 'Notebooks';
+      document.getElementById('form-price').value = '';
+      document.getElementById('form-stock').value = '10';
+      document.getElementById('form-min-stock').value = '5';
+      document.getElementById('delete-item-btn').classList.add('hidden');
+
+      document.getElementById('item-form-modal').classList.remove('hidden');
+      if (!prefillBarcode) {
+        setTimeout(() => document.getElementById('form-name').focus(), 100);
+      } else {
+        setTimeout(() => document.getElementById('form-name').focus(), 100);
+      }
+    };
+
+    function openEditItemModal(item) {
+      document.getElementById('edit-item-id').value = item.id;
+      document.getElementById('form-badge').textContent = 'Edit Stationery Item';
+      document.getElementById('form-title').textContent = 'Update Item Details';
+      document.getElementById('form-barcode').value = item.barcode || '';
+      document.getElementById('form-name').value = item.name || '';
+      document.getElementById('form-category').value = item.category || 'Other';
+      document.getElementById('form-price').value = item.price ?? 0;
+      document.getElementById('form-stock').value = item.stock ?? 0;
+      document.getElementById('form-min-stock').value = item.minStock ?? 5;
+      document.getElementById('delete-item-btn').classList.remove('hidden');
+
+      document.getElementById('item-form-modal').classList.remove('hidden');
+    }
+
+    window.closeItemFormModal = function() {
+      document.getElementById('item-form-modal').classList.add('hidden');
+    };
+
+    window.generateShopBarcode = function() {
+      const randomNum = Math.floor(100000 + Math.random() * 900000);
+      document.getElementById('form-barcode').value = 'VSP-' + randomNum;
+    };
+
+    window.saveStationeryItem = function(e) {
+      e.preventDefault();
+      const editId = document.getElementById('edit-item-id').value;
+      const barcode = document.getElementById('form-barcode').value.trim();
+      const name = document.getElementById('form-name').value.trim();
+      const category = document.getElementById('form-category').value;
+      const price = parseFloat(document.getElementById('form-price').value) || 0;
+      const stock = parseInt(document.getElementById('form-stock').value, 10) || 0;
+      const minStock = parseInt(document.getElementById('form-min-stock').value, 10) || 5;
+
+      if (!editId) {
+        const duplicate = inventoryItems.find(i => String(i.barcode).trim() === barcode);
+        if (duplicate) {
+          showToast(`Barcode already used by "${duplicate.name}"!`, '⚠️');
+          return;
+        }
+      }
+
+      const itemObj = {
+        id: editId || ('item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+        barcode,
+        name,
+        category,
+        price,
+        stock,
+        minStock,
+        updatedAt: Date.now()
+      };
+
+      let logEntry = null;
+      if (editId) {
+        const idx = inventoryItems.findIndex(i => i.id === editId);
+        if (idx !== -1) inventoryItems[idx] = itemObj;
+        showToast(`Updated "${name}"!`, '✅');
+      } else {
+        inventoryItems.push(itemObj);
+        logEntry = {
+          id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          type: 'NEW',
+          itemName: name,
+          barcode,
+          qty: stock,
+          newStock: stock,
+          device: deviceLabel,
+          timestamp: Date.now()
+        };
+        activityLogs.unshift(logEntry);
+        showToast(`Added "${name}" to shop!`, '🎉');
+      }
+
+      lastLocalWriteTime = Date.now();
+      saveToLocalStorage();
+      renderAll();
+      closeItemFormModal();
+
+      if (gasWebAppUrl) {
+        if (logEntry) {
+          syncWithGoogleSheet({ action: 'stockChange', item: itemObj, log: logEntry }, true);
+        } else {
+          syncWithGoogleSheet({ action: 'upsertItem', item: itemObj }, true);
+        }
+      }
+    };
+
+    window.deleteCurrentItem = function() {
+      const editId = document.getElementById('edit-item-id').value;
+      if (!editId) return;
+
+      const idx = inventoryItems.findIndex(i => i.id === editId);
+      const removedName = idx !== -1 ? inventoryItems[idx].name : 'Item';
+      if (idx !== -1) inventoryItems.splice(idx, 1);
+
+      lastLocalWriteTime = Date.now();
+      saveToLocalStorage();
+      renderAll();
+      closeItemFormModal();
+      showToast(`Deleted "${removedName}"`, '🗑️');
+
+      if (gasWebAppUrl) {
+        syncWithGoogleSheet({ action: 'deleteItem', id: editId }, true);
+      }
+    };
+
+    // --- 11. SETTINGS, CSV EXPORT & CLEAR ALL DATA ---
+    window.openSetupModal = function() {
+      document.getElementById('device-name-input').value = deviceLabel;
+      document.getElementById('gas-url-input').value = gasWebAppUrl;
+      document.getElementById('shop-pin-input').value = shopPin;
+      cancelClearAllData();
+      document.getElementById('setup-modal').classList.remove('hidden');
+    };
+
+    window.closeSetupModal = function() {
+      document.getElementById('setup-modal').classList.add('hidden');
+      cancelClearAllData();
+    };
+
+    window.quickSetDevice = function(name) {
+      document.getElementById('device-name-input').value = name;
+      saveDeviceName();
+    };
+
+    window.saveDeviceName = function() {
+      const val = document.getElementById('device-name-input').value.trim();
+      if (!val) return;
+      deviceLabel = val;
+      localStorage.setItem(STORAGE_KEYS.DEVICE, deviceLabel);
+      document.getElementById('device-label').textContent = `Live Barcode Inventory & POS • ${deviceLabel}`;
+      showToast(`Phone set as "${deviceLabel}"`, '📱');
+    };
+
+    window.promptClearAllData = function() {
+      document.getElementById('clear-data-step1').classList.add('hidden');
+      document.getElementById('clear-data-step2').classList.remove('hidden');
+    };
+
+    window.cancelClearAllData = function() {
+      const s1 = document.getElementById('clear-data-step1');
+      const s2 = document.getElementById('clear-data-step2');
+      if (s1) s1.classList.remove('hidden');
+      if (s2) s2.classList.add('hidden');
+    };
+
+    window.executeClearAllData = async function() {
+      inventoryItems = [];
+      activityLogs = [];
+      lastLocalWriteTime = Date.now();
+      saveToLocalStorage();
+      renderAll();
+
+      if (gasWebAppUrl) {
+        await syncWithGoogleSheet({ action: 'clearAll' }, true);
+      }
+
+      closeSetupModal();
+      showToast('All shop data cleared!', '🧹');
+    };
+
+    window.exportCSVBackup = function() {
+      if (inventoryItems.length === 0) {
+        showToast('No items in stock to export yet.', '⚠️');
+        return;
+      }
+
+      const headers = ['Barcode', 'Item Name', 'Category', 'Selling Price (INR)', 'Current Stock', 'Low Stock Alert', 'Total Value (INR)'];
+      const rows = inventoryItems.map(item => [
+        `"${(item.barcode || '').replace(/"/g, '""')}"`,
+        `"${(item.name || '').replace(/"/g, '""')}"`,
+        `"${(item.category || '').replace(/"/g, '""')}"`,
+        item.price || 0,
+        item.stock || 0,
+        item.minStock || 5,
+        (Number(item.price) || 0) * (Number(item.stock) || 0)
+      ]);
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Vangmay_Stationery_Point_Stock_${dateStr}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast('CSV downloaded! Save to Google Drive.', '📥');
+    };
+
+    // --- 12. UTILITIES ---
+    let toastTimeout = null;
+    function showToast(message, icon = '✅') {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').textContent = message;
+      document.getElementById('toast-icon').textContent = icon;
+
+      toast.classList.remove('opacity-0', '-translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-2');
+      }, 2800);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Boot immediately on DOMContentLoaded / load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+  </script>
+</body>
+</html>
